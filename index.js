@@ -31,11 +31,7 @@ async function main () {
   await writeFile(filePath, fields.join(';') + '\r\n', 'utf8')
 
   // Instanciation du navigateur avec puppeteer
-  const browser = await puppeteer.launch({
-    headless: false,
-    slowMo: 300,
-    args: ['--window-size=1920,1040']
-  })
+  const browser = await puppeteer.launch({ args: ['--window-size=1920,1040'] })
   const page = await browser.newPage()
   page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36')
   page.setViewport({ width: 1920, height: 1040 })
@@ -74,8 +70,5 @@ async function main () {
   await browser.close()
 }
 
-async function writeCSV (input) {
-
-}
 
 main()
