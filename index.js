@@ -1,7 +1,11 @@
 const puppeteer = require('puppeteer')
 const Promise = require('bluebird')
+const fs = require('fs')
+const writeFile = Promise.promisify(fs.writeFile)
+const appendFile = Promise.promisify(fs.appendFile)
 
 // Les paramètres du script
+const filePath = 'output.csv'
 const region = 6
 const pause = 2000
 const fields = [
@@ -15,7 +19,7 @@ const fields = [
   'libCompletFormeJuridique',
   'nomFamille',
   'prenom',
-  'codePostal',
+  'cp',
   'ville',
   'departement',
   'pays'
@@ -23,6 +27,8 @@ const fields = [
 
 
 async function main () {
+
+  await writeFile(filePath, fields.join(';') + '\r\n', 'utf8')
 
   // Instanciation du navigateur avec puppeteer
   const browser = await puppeteer.launch({
@@ -38,25 +44,38 @@ async function main () {
   // Chargement de la page correspondant à la région
   await page.goto(`https://registre-vtc.developpement-durable.gouv.fr/public/recherche-geographique/${region}/lister`)
   await page.select('select[name="tableListeResultat_length"]', '100')
-  await new Promise(resolve => setTimeout(resolve, pause))
-  const length = await page.evaluate(() => document.querySelectorAll('table tr').length)
+  
 
-  // Parcours des liens un par un
-  await Promise.resolve(Array.apply(null, Array(length - 1)))
-    .mapSeries(async (x, index) => {
-      await Promise.all([ page.waitForNavigation(), page.click(`table tr:nth-child(${ index + 1 }) td a`) ])
-      const data = await page.evaluate(items => {
-        return items.reduce((result, id) => {
-          result[id] = document.querySelector(`#${id}`).innerHTML
-          return result
-        }, {})
-      }, fields)
-      console.log(data)
-      await page.click('.panel-body button')
+  let lastPageDone = false
+  while(!lastPageDone) {
+
+    await new Promise(resolve => setTimeout(resolve, pause))
+    const length = await page.evaluate(() => document.querySelectorAll('table tr').length) - 1
+    console.log(`Found ${length} items in this page`)
+
+    await Promise.resolve(Array.apply(null, Array(length)))
+      .mapSeries(async (x, index) => {
+        await Promise.all([ page.waitForNavigation({ waitUntil: 'networkidle0' }), page.click(`table tr:nth-child(${ index + 1 }) td a`) ])
+        const data = await page.evaluate(items => items.map(id => document.querySelector(`#${id}`).innerHTML), fields)
+        console.log(`Inserted row for driver ${data[3]}`)
+        await appendFile(filePath, data.join(';') + '\r\n', 'utf8')
+        await Promise.all([ page.waitForNavigation({ waitUntil: 'networkidle0' }), page.click('.panel-body button') ])
+      })
+
+    const isLastPage = await page.evaluate(() => document.querySelector('.paginate_button.next').classList.contains('disabled'))
+    if (!isLastPage) {
+      await page.click('.paginate_button.next')
       await new Promise(resolve => setTimeout(resolve, pause))
-    })
+    } else {
+      lastPageDone = true
+    }
+  }
 
   await browser.close()
+}
+
+async function writeCSV (input) {
+
 }
 
 main()
